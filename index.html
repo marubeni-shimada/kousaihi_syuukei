@@ -107,6 +107,13 @@
     </table>
   </div>
   <div class="side">
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <span class="sub" style="font-weight:600">対象期:</span>
+      <select id="periodSel" style="background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:5px 8px;font-size:12px"></select>
+      <button class="btn sec mini" onclick="addPeriod()">＋新しい期</button>
+      <button class="btn sec mini" onclick="renamePeriod()">名称変更</button>
+      <button class="btn sec mini" onclick="delPeriod()">削除</button>
+    </div>
     <div class="impbox" id="dropzone">
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <button class="btn imp mini" onclick="document.getElementById('impf').click()">⬆ データ取込（txt/CSV）</button>
@@ -168,6 +175,39 @@ let CANDS=CFG.cands.slice();
 const norm=s=>(s||'').normalize('NFKC').replace(/[\s　]/g,'');
 // ---- persistence keys ----
 const PKEY='settai_prog_v3', CKEY='settai_corr_v1', MKEY='settai_cands_v1';
+// ---- 期（年度）切替 ----
+const PPKEY='settai_periods_v1', PAKEY='settai_active_v1';
+let PERIODS=[], PERIOD='40期';
+function progKey(){return PKEY+'::'+PERIOD;}
+function savePeriods(){try{localStorage.setItem(PPKEY,JSON.stringify(PERIODS));localStorage.setItem(PAKEY,PERIOD);}catch(e){}}
+function loadPeriods(){
+  try{const s=localStorage.getItem(PPKEY);if(s)PERIODS=JSON.parse(s);}catch(e){}
+  try{const a=localStorage.getItem(PAKEY);if(a)PERIOD=a;}catch(e){}
+  if(!PERIODS.length){PERIODS=['40期'];PERIOD='40期';
+    try{const old=localStorage.getItem(PKEY);if(old&&!localStorage.getItem(progKey()))localStorage.setItem(progKey(),old);}catch(e){}
+    savePeriods();}
+  if(!PERIODS.includes(PERIOD))PERIOD=PERIODS[0]||'40期';}
+function renderPeriodSel(){const sel=document.getElementById('periodSel');if(!sel)return;
+  sel.innerHTML=PERIODS.map(p=>`<option value="${esc(p)}"${p===PERIOD?' selected':''}>${esc(p)}</option>`).join('');
+  sel.onchange=()=>switchPeriod(sel.value);}
+async function switchPeriod(p){if(!p||p===PERIOD){return;}
+  if(_syncTimer){clearTimeout(_syncTimer);_syncTimer=null;}
+  if(cloudConfigured()){try{await cloudSave();}catch(e){}}
+  PERIOD=p;savePeriods();TX=[];DSNAME='（未取込）';
+  if(cloudConfigured()){await cloudLoad(false);}else{autoload();render();updateAutoStat();}
+  renderPeriodSel();}
+function addPeriod(){const name=prompt('新しい期の名前を入力してください（例：41期）');if(!name)return;const nm=name.trim();if(!nm)return;
+  if(PERIODS.includes(nm)){switchPeriod(nm);return;}PERIODS.push(nm);savePeriods();renderPeriodSel();switchPeriod(nm);}
+function renamePeriod(){const name=prompt('この期の名前を変更',PERIOD);if(!name)return;const nm=name.trim();if(!nm||nm===PERIOD)return;
+  if(PERIODS.includes(nm)){alert('その名前は既にあります。');return;}
+  try{const cur=localStorage.getItem(progKey());if(cur){localStorage.setItem(PKEY+'::'+nm,cur);localStorage.removeItem(progKey());}}catch(e){}
+  PERIODS[PERIODS.indexOf(PERIOD)]=nm;PERIOD=nm;savePeriods();renderPeriodSel();
+  if(cloudConfigured())cloudSave();}
+function delPeriod(){if(PERIODS.length<=1){alert('最後の期は削除できません。');return;}
+  if(!confirm(PERIOD+' をこの端末の一覧から外します（クラウド上のデータは残ります）。よろしいですか？'))return;
+  try{localStorage.removeItem(progKey());}catch(e){}
+  PERIODS=PERIODS.filter(x=>x!==PERIOD);PERIOD=PERIODS[0];savePeriods();TX=[];DSNAME='（未取込）';
+  if(cloudConfigured()){cloudLoad(false);}else{autoload();render();updateAutoStat();}renderPeriodSel();}
 let AUTO=false;(function(){try{localStorage.setItem('__t','1');localStorage.removeItem('__t');AUTO=true;}catch(e){}})();
 let CORR={};  // normTekiyo -> [clients]  (learned from manual edits)
 function loadCorr(){if(!AUTO)return;try{const s=localStorage.getItem(CKEY);if(s)CORR=JSON.parse(s);}catch(e){}}
@@ -358,14 +398,14 @@ dz.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();dz.classLi
 // ページ全体にドロップされてもファイルを開かない（ドロップ領域外は無視）
 ['dragover','drop'].forEach(ev=>window.addEventListener(ev,e=>{if(e.target.closest&&e.target.closest('#dropzone'))return;e.preventDefault();}));
 // ---- persistence ----
-function persist(){scheduleCloudSave();if(!AUTO)return;try{localStorage.setItem(PKEY,JSON.stringify({v:2,saved:Date.now(),ds:DSNAME,tx:TX}));}catch(e){AUTO=false;}updateAutoStat();}
-function autoload(){if(!AUTO)return false;try{const s=localStorage.getItem(PKEY);if(!s)return false;const d=JSON.parse(s);if(!d.tx)return false;TX=d.tx.map(t=>({man:false,dict:false,...t}));DSNAME=d.ds||DSNAME;return true;}catch(e){return false;}}
+function persist(){scheduleCloudSave();if(!AUTO)return;try{localStorage.setItem(progKey(),JSON.stringify({v:2,saved:Date.now(),ds:DSNAME,tx:TX}));}catch(e){AUTO=false;}updateAutoStat();}
+function autoload(){if(!AUTO)return false;try{const s=localStorage.getItem(progKey());if(!s)return false;const d=JSON.parse(s);if(!d.tx)return false;TX=d.tx.map(t=>({man:false,dict:false,...t}));DSNAME=d.ds||DSNAME;return true;}catch(e){return false;}}
 function updateAutoStat(){const el=document.getElementById('autostat');if(!el)return;
-  if(AUTO){let t='';try{const s=localStorage.getItem(PKEY);if(s){const d=JSON.parse(s);t=' （最終保存 '+new Date(d.saved).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+'）';}}catch(e){}
+  if(AUTO){let t='';try{const s=localStorage.getItem(progKey());if(s){const d=JSON.parse(s);t=' （最終保存 '+new Date(d.saved).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+'）';}}catch(e){}
     const nc=Object.keys(CORR).length;
     el.innerHTML='🔄 自動保存 ON — 閉じても続きから再開'+t+'　｜　学習辞書 '+nc+'件';el.style.color='#3fb950';}
   else{el.innerHTML='⚠ この環境では自動保存が使えません。「ファイル保存／読込」で管理してください';el.style.color='var(--none)';}}
-function clearAuto(){if(!confirm('自動保存された作業内容を消去します（学習辞書は残ります）。よろしいですか？'))return;try{localStorage.removeItem(PKEY);}catch(e){}updateAutoStat();}
+function clearAuto(){if(!confirm('自動保存された作業内容を消去します（学習辞書は残ります）。よろしいですか？'))return;try{localStorage.removeItem(progKey());}catch(e){}updateAutoStat();}
 function csv(rows){return'﻿'+rows.map(r=>r.map(c=>{c=(c==null?'':''+c);return/[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c;}).join(',')).join('\n');}
 function dl(name,text,type){const b=new Blob([text],{type:type||'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
 function exportPivot(){const{piv,clients}=PIV;const rows=[['相手先',...MONTHS,'合計']];clients.forEach(c=>{const mv=piv[c];let rt=0;const line=[c];FM.forEach(m=>{line.push(mv[m]||0);rt+=(mv[m]||0);});line.push(rt);rows.push(line);});dl('相手先別集計.csv',csv(rows));}
@@ -507,19 +547,20 @@ function saveCloudCfg(){CLOUD={url:document.getElementById('gasurl').value.trim(
   if(cloudConfigured()){cloudLoad(true);}else setSync('クラウド未設定（ローカル保存のみ）');}
 async function cloudLoad(showAlert){if(!cloudConfigured()){if(showAlert)alert('先にGASのURLと合言葉を設定してください。');return;}
   setSync('クラウドから読込中…','var(--accent)');
-  try{const r=await fetch(CLOUD.url+'?action=load&token='+encodeURIComponent(CLOUD.token));const d=await r.json();
+  try{const r=await fetch(CLOUD.url+'?action=load&period='+encodeURIComponent(PERIOD)+'&token='+encodeURIComponent(CLOUD.token));const d=await r.json();
     if(!d.ok)throw new Error(d.error||'認証エラー');
     if(d.tx)TX=d.tx.map(t=>({man:false,dict:false,...t}));
     if(d.corr)CORR=d.corr; if(d.cands)d.cands.forEach(c=>{if(!CANDS.includes(c))CANDS.push(c);});
+    if(d.periods&&d.periods.length){d.periods.forEach(p=>{if(!PERIODS.includes(p))PERIODS.push(p);});savePeriods();renderPeriodSel();}
     refreshCands();render();
-    try{localStorage.setItem(PKEY,JSON.stringify({v:2,saved:Date.now(),ds:DSNAME,tx:TX}));}catch(e){}
+    try{localStorage.setItem(progKey(),JSON.stringify({v:2,saved:Date.now(),ds:DSNAME,tx:TX}));}catch(e){}
     setSync('✓ クラウドから読込完了 '+(d.savedAt?('（'+d.savedAt+'）'):''),'#3fb950');
     if(showAlert)alert('クラウドから読み込みました：明細 '+((d.tx&&d.tx.length)||0)+'件');
   }catch(e){setSync('⚠ 読込失敗: '+e.message,'#f0883e');if(showAlert)alert('クラウド読込に失敗しました: '+e.message);}}
 function scheduleCloudSave(){if(!cloudConfigured())return;if(_syncTimer)clearTimeout(_syncTimer);setSync('未同期の変更あり…','#e3a008');_syncTimer=setTimeout(cloudSave,1500);}
 async function cloudSave(){if(!cloudConfigured()){setSync('クラウド未設定（ローカル保存のみ）');return;}if(_syncing){scheduleCloudSave();return;}
   _syncing=true;setSync('クラウドへ保存中…','var(--accent)');
-  try{const body=JSON.stringify({action:'save',token:CLOUD.token,tx:TX,corr:CORR,cands:CANDS});
+  try{const body=JSON.stringify({action:'save',token:CLOUD.token,period:PERIOD,tx:TX,corr:CORR,cands:CANDS});
     const r=await fetch(CLOUD.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:body});
     const d=await r.json();if(!d.ok)throw new Error(d.error||'認証エラー');
     setSync('✓ クラウド保存済み '+(d.savedAt||''),'#3fb950');
@@ -528,6 +569,7 @@ async function cloudSave(){if(!cloudConfigured()){setSync('クラウド未設定
 
 // ---- init ----
 loadCorr();loadCands();refreshCands();
+loadPeriods();renderPeriodSel();
 const _loaded=autoload();
 if(!_loaded)TX=[];   // 空の状態から開始（txt取込で投入）
 render();updateAutoStat();
