@@ -197,12 +197,13 @@ const CLI_BUCKETS=new Set(CFG.buckets.map(b=>b[1]).concat([CLI_NONE]));
 const BRX=CFG.buckets.map(([p,n])=>[new RegExp(p),n]);
 // ===== 担当者（社員）軸 =====
 let STAFF=['川井','山崎','益田','青島','鈴木','漆畑','紅林','駒井','中森','青木','渡邊','松井','秋田','小長谷','池田','法月','大塚'];
-const DEPT=['社長','副社長','専務','常務','会長','営業','営業部','環境','土木部','品質','安全','総務'];
+const DEPT=['社長','副社長','専務','常務','会長','営業部','環境','土木部','品質','安全','総務'];  // 「営業」は「営業部」に統合
+const DEPT_ALIAS={'営業':'営業部'};                                   // 摘要の表記ゆれを正規化
 const STAFF_BUCKETS=new Set(DEPT.concat([STAFF_NONE]));
 const toksS=s=>(s||'').split(/[\s　、,，・\/／]+/).filter(Boolean);
 function classifyStaff(tekiyo){const T=toksS(tekiyo);
   const p=[...new Set(T.filter(x=>STAFF.includes(x)))]; if(p.length)return{s:p,sk:'company'};
-  const d=[...new Set(T.filter(x=>DEPT.includes(x)))]; if(d.length)return{s:d,sk:'bucket'};
+  const d=[...new Set(T.filter(x=>DEPT.includes(x)||DEPT_ALIAS[x]).map(x=>DEPT_ALIAS[x]||x))]; if(d.length)return{s:d,sk:'bucket'};
   return{s:[STAFF_NONE],sk:'none'};}
 let BUCKETS=CLI_BUCKETS;
 let CLI_CANDS=CFG.cands.slice();
@@ -222,6 +223,8 @@ function normalizeTx(t){ // 旧データ・クラウド由来（軸フィール�
   if(t.cStaff===undefined){const st=classifyStaff(t.t);t.cStaff=st.s.slice();t.ocStaff=st.s.slice();t.kStaff=st.sk;t.manStaff=false;t.dictStaff=false;}
   else if(!t.manStaff&&(t.kStaff==='gift'||(Array.isArray(t.cStaff)&&t.cStaff.indexOf('手土産（共通）')>=0))){ // 旧「手土産（共通）」の保存データを元へ戻す
     const st=classifyStaff(t.t);t.cStaff=st.s.slice();t.ocStaff=st.s.slice();t.kStaff=st.sk;}
+  if(Array.isArray(t.cStaff))t.cStaff=[...new Set(t.cStaff.map(x=>x==='営業'?'営業部':x))];   // 「営業」→「営業部」に統合
+  if(Array.isArray(t.ocStaff))t.ocStaff=[...new Set(t.ocStaff.map(x=>x==='営業'?'営業部':x))];
   setActive(t);return t;}
 const norm=s=>(s||'').normalize('NFKC').replace(/[\s　]/g,'');
 // ---- persistence keys ----
@@ -265,7 +268,7 @@ function loadCorr(){if(!AUTO)return;try{const s=localStorage.getItem(CKEY);if(s)
 function saveCorr(){if(!AUTO)return;try{localStorage.setItem(AXIS==='staff'?SCKEY:CKEY,JSON.stringify(CORR));}catch(e){}}
 function loadCands(){if(!AUTO)return;try{const s=localStorage.getItem(MKEY);if(s){JSON.parse(s).forEach(c=>{if(!CLI_CANDS.includes(c))CLI_CANDS.push(c);});}}catch(e){}try{const s=localStorage.getItem(SMKEY);if(s){JSON.parse(s).forEach(c=>{if(!SCANDS.includes(c))SCANDS.push(c);});}}catch(e){}}
 function saveCands(){if(!AUTO)return;try{localStorage.setItem(AXIS==='staff'?SMKEY:MKEY,JSON.stringify(CANDS));}catch(e){}}
-function applyCorrBoth(t){const key=norm(t.t);if(CLI_CORR[key]){t.cCli=CLI_CORR[key].slice();t.dictCli=true;}if(SCORR[key]){t.cStaff=SCORR[key].slice();t.dictStaff=true;}}
+function applyCorrBoth(t){const key=norm(t.t);if(CLI_CORR[key]){t.cCli=CLI_CORR[key].slice();t.dictCli=true;}if(SCORR[key]){t.cStaff=[...new Set(SCORR[key].map(x=>x==='営業'?'営業部':x))];t.dictStaff=true;}}
 function refreshCands(){document.getElementById('cands').innerHTML=CANDS.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');}
 // ---- classifier ----
 function classify(tekiyo){const tk=norm(tekiyo);const hits=[];
@@ -652,7 +655,7 @@ async function cloudSave(){if(!cloudConfigured()){setSync('クラウド未設定
   _syncing=false;}
 
 // ---- init ----
-loadCorr();loadCands();refreshCands();
+loadCorr();loadCands();SCANDS=SCANDS.filter(x=>x!=='営業');refreshCands();   // 「営業」候補を除外（営業部に統合）
 loadPeriods();renderPeriodSel();
 const _loaded=autoload();
 if(!_loaded)TX=txFromEmbedded();   // 作業コピー：埋め込みサンプル(実データ)で即プレビュー
