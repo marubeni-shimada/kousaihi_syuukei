@@ -582,7 +582,10 @@ function exportXlsx(){
   clients.forEach(c=>groups[classOf2(c)].push(c));
   for(const g in groups)groups[g].sort((a,b)=>totv(piv[b])-totv(piv[a]));
   const MONTHS2=FM.map(m=>m+'月');
-  const H=['区分',(AXIS==='staff'?'担当者':'相手先'),'39期売上高','粗利','40期売上高','粗利','粗利率','接待交際費合計','売上対比率'].concat(MONTHS2).concat(['合計','件数']);
+  const _pn=parseInt(String(PERIOD).replace(/[^0-9]/g,''),10);        // 対象期の番号（'40期'→40）
+  const curL =isNaN(_pn)?'当期':_pn+'期';                              // 当期ラベル
+  const prevL=isNaN(_pn)?'前期':(_pn-1)+'期';                          // 前期ラベル
+  const H=['区分',(AXIS==='staff'?'担当者':'相手先'),prevL+'売上高','粗利',curL+'売上高','粗利','粗利率','接待交際費合計','売上対比率'].concat(MONTHS2).concat(['合計','件数']);
   const S={hdr:1,yen:2,txt:3,gh:4,tyen:5,tlbl:6,cnt:7,title:8};
   const rows=[];
   rows.push([{v:'接待交際費 '+(AXIS==='staff'?'担当者別':'相手先別')+'集計（税込・摘要判定）',s:S.title}]);
@@ -591,7 +594,7 @@ function exportXlsx(){
   rows.push(H.map(x=>({v:x,s:S.hdr})));
   const gLabel=AXIS==='staff'
     ?{master:'①社員リスト',new:'②新規担当者（リスト外）',bucket:'③部署・役職',none:'④担当者不明（要確認）'}
-    :{master:'①40期リスト計上分',new:'②新規相手先（リスト外）',bucket:'③カテゴリ計上（相手先特定不可）',none:'④未分類（要確認）'};
+    :{master:'①'+curL+'リスト計上分',new:'②新規相手先（リスト外）',bucket:'③カテゴリ計上（相手先特定不可）',none:'④未分類（要確認）'};
   function clientRow(c){const mv=piv[c];const r=[{s:S.txt},{v:c,s:S.txt},{s:S.txt},{s:S.txt},{s:S.txt},{s:S.txt},{s:S.txt},{v:totv(mv),t:'n',s:S.yen},{s:S.txt}];FM.forEach(m=>r.push({v:mv[m]||0,t:'n',s:S.yen}));r.push({v:totv(mv),t:'n',s:S.yen});r.push({v:cnt[c],t:'n',s:S.cnt});return r;}
   let grand=0,gcnt=0;const gm={};
   for(const g of ['master','new','bucket','none']){if(!groups[g].length)continue;
