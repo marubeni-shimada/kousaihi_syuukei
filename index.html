@@ -97,6 +97,11 @@
   .acitem b{color:var(--accent)}.acitem.on b,.acitem:hover b{color:var(--accent2)}
   .acitem .mk{font-size:10px;color:var(--mut2);margin-left:6px}.acitem.on .mk{color:var(--accent)}
   .acnew{color:var(--accent)}
+  .loadwrap{position:fixed;inset:0;background:rgba(245,246,248,.62);backdrop-filter:blur(1px);z-index:80;display:none;align-items:center;justify-content:center}
+  .loadwrap.on{display:flex}
+  .loadbox{display:flex;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 22px;box-shadow:0 12px 40px rgba(17,24,38,.18);font-size:13px;font-weight:600;color:var(--txt)}
+  .spinner{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -188,6 +193,7 @@
 </div></div>
 <datalist id="cands"></datalist>
 <div id="ac" class="acbox"></div>
+<div id="loading" class="loadwrap"><div class="loadbox"><div class="spinner"></div><span id="loadmsg">読み込み中…</span></div></div>
 <script>
 const DATA={"txs": [], "FM": [7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6]}, CFG={"terms": [["マルマンコーポレーション", "ﾏﾙﾏｺｰﾎﾟﾚｰｼｮﾝ"], ["マルマコーポレーション", "ﾏﾙﾏｺｰﾎﾟﾚｰｼｮﾝ"], ["ラトナエンジニアリンク", "ﾗﾄﾅｴﾝｼﾞﾆｱﾘﾝｸ"], ["ラトナエンジニアリング", "ﾗﾄﾅｴﾝｼﾞﾆｱﾘﾝｸ"], ["ラトナエンジニアリンク", "ﾗﾄﾅｴﾝｼﾞﾆｱﾘﾝｸ"], ["中部衛生検査センター", "中部衛生検査ｾﾝﾀｰ"], ["中部衛生検査センター", "中部衛生検査ｾﾝﾀｰ"], ["特種東海フォレスト", "特種東海フォレスト"], ["丸栄コンクリート", "丸栄コンクリート"], ["安藤間ハザマ興業", "安藤間ハザマ興業"], ["初倉経済交流会", "初倉経済交流会"], ["山田建築事務所", "山田建築事務所"], ["ダイケン工務店", "ダイケン工務店"], ["服部エンジニア", "服部エンジニア"], ["東海フォレスト", "特種東海フォレスト"], ["安藤ハザマ興業", "安藤間ハザマ興業"], ["サンフェル海運", "サンフェル海運"], ["三友クリエイト", "三友クリエイト"], ["庭守あさくら", "庭守あさくら"], ["セイエン商事", "セイエン商事"], ["エンドー工設", "エンドー工設"], ["理研グリーン", "理研ｸﾞﾘｰﾝ"], ["A&C不動産", "A&C不動産(ACC/ABC)"], ["ACC不動産", "A&C不動産(ACC/ABC)"], ["ABC不動産", "A&C不動産(ACC/ABC)"], ["三井住友建設", "三井住友建設"], ["アースシフト", "アースシフト"], ["ラックランド", "ラックランド"], ["ペパーレット", "ペパーレット"], ["駿河緑地造成", "駿河緑地造成"], ["タケイメタル", "タケイメタル"], ["大河原建設", "大河原建設"], ["静岡トヨタ", "静岡トヨタ"], ["オオバ工業", "オオバ工業"], ["横田川建材", "横田川建材"], ["コスモ建設", "コスモ建設"], ["建設業協会", "建設業協会"], ["小水力発電", "小水力発電"], ["アクト建設", "アクト建設"], ["石神工務店", "石神工務店"], ["島田商工会", "島田商工会"], ["安藤ハザマ", "安藤ハザマ"], ["日鉄スラグ", "日鉄スラグ"], ["旭化成建材", "旭化成建材"], ["丸治C製品", "丸治Ｃ製品"], ["サンフェル", "サンフェル海運"], ["ACC不動", "A&C不動産(ACC/ABC)"], ["ABC不動", "A&C不動産(ACC/ABC)"], ["明和不動産", "明和不動産"], ["あすか工業", "あすか工業"], ["ペパレット", "ペパーレット"], ["日鉄クラブ", "日鉄クラブ"], ["鹿島道路", "鹿島道路"], ["南部建設", "南部建設"], ["東亜道路", "東亜道路"], ["日本道路", "日本道路"], ["中林建設", "中林建設"], ["佐藤渡辺", "佐藤渡辺"], ["三谷商事", "三谷商事"], ["平井工業", "平井工業"], ["菊川建設", "菊川建設"], ["鈴木土建", "鈴木土建"], ["栗原建材", "栗原建材"], ["金永土木", "金永土木"], ["中栄建設", "中栄建設"], ["五洋建設", "五洋建設"], ["中村建設", "中村建設"], ["鈴与商事", "鈴与商事"], ["トーエイ", "トーエイ"], ["木材開発", "木材開発"], ["市川土木", "市川土木"], ["日本発電", "日本発電"], ["山内木材", "山内木材"], ["河畑工業", "河畑工業"], ["原川土木", "原川土木"], ["木内建設", "木内建設"], ["長塚商会", "長塚商会"], ["Musu", "(株)Ｍｕｓｕ"], ["フジヤマ", "フジヤマ"], ["大鐘測量", "大鐘測量"], ["大石建設", "大石建設"], ["木下造園", "木下造園"], ["マルマン", "ﾏﾙﾏｺｰﾎﾟﾚｰｼｮﾝ"], ["Musu", "(株)Ｍｕｓｕ"], ["鹿島建設", "鹿島建設"], ["藤光海運", "藤光海運"], ["角丸建設", "角丸建設"], ["玉津建設", "玉津建設"], ["戸塚建設", "戸塚建設"], ["紅建通商", "紅建通商"], ["第一建設", "第一建設"], ["前田道路", "前田道路"], ["西松建設", "西松建設"], ["本橋建設", "本橋建設"], ["太田商店", "太田商店"], ["ヨシコン", "ヨシコン"], ["フジ建設", "フジ建設"], ["伊東建設", "伊東建設"], ["甲子庭園", "甲子庭園"], ["八洲建設", "八洲建設"], ["鈴与建設", "鈴与建設"], ["中村組", "中村組"], ["ヨシオ", "ヨシオ"], ["小原組", "小原組"], ["若杉組", "若杉組"], ["橋本組", "橋本組"], ["小島組", "小島組"], ["ライズ", "ライズ"], ["モリヤ", "モリヤ"], ["落合組", "落合組"], ["初信会", "初信会"], ["タイズ", "タイズ"], ["旭測量", "旭測量"], ["吉川組", "吉川組"], ["マルマ", "ﾏﾙﾏｺｰﾎﾟﾚｰｼｮﾝ"], ["大河原", "大河原建設"], ["梶山組", "梶山組"], ["熊谷組", "熊谷組"], ["原小組", "原小組"], ["三氣屋", "三氣屋"], ["内野組", "内野組"], ["小長谷", "小長谷"], ["リノイ", "リノイ"], ["渥美", "(株)渥美"], ["黒崎", "黒崎"], ["常宏", "常宏"], ["ヒダ", "ヒダ"], ["植真", "(株)植真"], ["曽根", "曽根氏"], ["伊中", "伊中氏"], ["横運", "横運"], ["増田", "増田"], ["曽根", "曽根氏"], ["伊中", "伊中氏"], ["橘", "橘"]], "buckets": [["弁護士|税理士|会計事務所|先生|審査人|ISO", "専門家・その他"], ["香典|葬儀|逝去|生花|花代|お見舞|見舞|初盆|尊父|快気|お別れ会|社葬|お礼周り", "慶弔・見舞"], ["結婚祝|祝い|ご祝儀|協賛金", "協賛金・祝儀"], ["賀詞交歓|交流会|懇親会|新年会|研修|視察|市長を囲む|エスパルス|慰労会|建設業部会|商工会|会員交流|夏季交流|会合|部会|囲む会", "各種会合・研修"], ["あいさつ回り|挨拶回り|営業先|取引先贈答|取引先手土産|営業部手土産|営業用手土産|来客用|贈答品", "営業先複数・贈答(相手先不明)"], ["中元|歳暮", "中元・歳暮(相手先不明)"]], "cands": ["鹿島道路", "中村組", "南部建設", "東亜道路", "日本道路", "特種東海フォレスト", "大河原建設", "庭守あさくら", "中林建設", "静岡トヨタ", "佐藤渡辺", "(株)渥美", "黒崎", "常宏", "三谷商事", "オオバ工業", "ヨシオ", "小原組", "ヒダ", "横田川建材", "(株)植真", "平井工業", "菊川建設", "鈴木土建", "若杉組", "栗原建材", "コスモ建設", "丸栄コンクリート", "セイエン商事", "金永土木", "中栄建設", "エンドー工設", "曽根氏", "五洋建設", "橋本組", "中村建設", "鈴与商事", "トーエイ", "建設業協会", "小島組", "橘", "木材開発", "市川土木", "小水力発電", "安藤間ハザマ興業", "日本発電", "山内木材", "ライズ", "ﾏﾙﾏｺｰﾎﾟﾚｰｼｮﾝ", "アクト建設", "石神工務店", "河畑工業", "初倉経済交流会", "原川土木", "島田商工会", "伊中氏", "モリヤ", "中部衛生検査ｾﾝﾀｰ", "木内建設", "落合組", "安藤ハザマ", "日鉄スラグ", "長塚商会", "旭化成建材", "理研ｸﾞﾘｰﾝ", "山田建築事務所", "ダイケン工務店", "横運", "初信会", "(株)Ｍｕｓｕ", "タイズ", "フジヤマ", "服部エンジニア", "大鐘測量", "旭測量", "大石建設", "ﾗﾄﾅｴﾝｼﾞﾆｱﾘﾝｸ", "丸治Ｃ製品", "増田", "木下造園", "吉川組", "鹿島建設", "サンフェル海運", "藤光海運", "A&C不動産(ACC/ABC)", "梶山組", "角丸建設", "玉津建設", "戸塚建設", "紅建通商", "第一建設", "前田道路", "熊谷組", "三井住友建設", "西松建設", "本橋建設", "原小組", "アースシフト", "ラックランド", "明和不動産", "太田商店", "ヨシコン", "あすか工業", "フジ建設", "伊東建設", "ペパーレット", "日鉄クラブ", "三氣屋", "甲子庭園", "内野組", "八洲建設", "駿河緑地造成", "タケイメタル", "小長谷", "リノイ", "三友クリエイト", "鈴与建設", "営業先複数・贈答(相手先不明)", "中元・歳暮(相手先不明)", "慶弔・見舞", "各種会合・研修", "協賛金・祝儀", "専門家・その他", "未分類（要確認）"], "FM": [7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6], "master": ["鹿島道路", "中村組", "南部建設", "東亜道路", "日本道路", "特種東海フォレスト", "大河原建設", "庭守あさくら", "中林建設", "静岡トヨタ", "佐藤渡辺", "(株)渥美", "黒崎", "常宏", "三谷商事", "オオバ工業", "ヨシオ", "小原組", "ヒダ", "横田川建材", "(株)植真", "平井工業", "菊川建設", "鈴木土建", "若杉組", "栗原建材", "コスモ建設", "丸栄コンクリート", "セイエン商事", "金永土木", "中栄建設", "エンドー工設", "曽根氏", "五洋建設", "橋本組", "中村建設", "鈴与商事", "トーエイ", "建設業協会", "小島組", "橘", "木材開発", "市川土木", "小水力発電", "安藤間ハザマ興業", "日本発電", "山内木材", "ライズ", "ﾏﾙﾏｺｰﾎﾟﾚｰｼｮﾝ", "アクト建設", "石神工務店", "河畑工業", "初倉経済交流会", "原川土木", "島田商工会", "伊中氏", "モリヤ", "中部衛生検査ｾﾝﾀｰ", "木内建設", "落合組", "安藤ハザマ", "日鉄スラグ", "長塚商会", "旭化成建材", "理研ｸﾞﾘｰﾝ", "山田建築事務所", "ダイケン工務店", "横運", "初信会", "(株)Ｍｕｓｕ", "タイズ", "フジヤマ", "服部エンジニア", "大鐘測量", "旭測量", "大石建設", "ﾗﾄﾅｴﾝｼﾞﾆｱﾘﾝｸ", "丸治Ｃ製品", "増田", "木下造園", "吉川組"]};
 const FM=CFG.FM, MONTHS=FM.map(m=>m+'月');
@@ -241,15 +247,21 @@ function loadPeriods(){
     try{const old=localStorage.getItem(PKEY);if(old&&!localStorage.getItem(progKey()))localStorage.setItem(progKey(),old);}catch(e){}
     savePeriods();}
   if(!PERIODS.includes(PERIOD))PERIOD=PERIODS[0]||'40期';}
+function showLoading(msg){const el=document.getElementById('loading');if(!el)return;const m=document.getElementById('loadmsg');if(m)m.textContent=msg||'読み込み中…';el.classList.add('on');}
+function hideLoading(){const el=document.getElementById('loading');if(el)el.classList.remove('on');}
 function renderPeriodSel(){const sel=document.getElementById('periodSel');if(!sel)return;
   sel.innerHTML=PERIODS.map(p=>`<option value="${esc(p)}"${p===PERIOD?' selected':''}>${esc(p)}</option>`).join('');
   sel.onchange=()=>switchPeriod(sel.value);}
 async function switchPeriod(p){if(!p||p===PERIOD){return;}
+  showLoading(p+' に切替中…');
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));   // オーバーレイを先に描画
   if(_syncTimer){clearTimeout(_syncTimer);_syncTimer=null;}
-  if(cloudConfigured()){try{await cloudSave();}catch(e){}}
-  PERIOD=p;savePeriods();TX=[];DSNAME='（未取込）';
-  if(cloudConfigured()){await cloudLoad(false);}else{autoload();render();updateAutoStat();}
-  renderPeriodSel();}
+  try{
+    if(cloudConfigured()){try{await cloudSave();}catch(e){}}
+    PERIOD=p;savePeriods();TX=[];DSNAME='（未取込）';
+    if(cloudConfigured()){await cloudLoad(false);}else{autoload();render();updateAutoStat();}
+    renderPeriodSel();
+  }finally{hideLoading();}}
 function addPeriod(){const name=prompt('新しい期の名前を入力してください（例：41期）');if(!name)return;const nm=name.trim();if(!nm)return;
   if(PERIODS.includes(nm)){switchPeriod(nm);return;}PERIODS.push(nm);savePeriods();renderPeriodSel();switchPeriod(nm);}
 function renamePeriod(){const name=prompt('この期の名前を変更',PERIOD);if(!name)return;const nm=name.trim();if(!nm||nm===PERIOD)return;
@@ -261,7 +273,7 @@ function delPeriod(){if(PERIODS.length<=1){alert('最後の期は削除できま
   if(!confirm(PERIOD+' をこの端末の一覧から外します（クラウド上のデータは残ります）。よろしいですか？'))return;
   try{localStorage.removeItem(progKey());}catch(e){}
   PERIODS=PERIODS.filter(x=>x!==PERIOD);PERIOD=PERIODS[0];savePeriods();TX=[];DSNAME='（未取込）';
-  if(cloudConfigured()){cloudLoad(false);}else{autoload();render();updateAutoStat();}renderPeriodSel();}
+  if(cloudConfigured()){showLoading('読み込み中…');cloudLoad(false).finally(hideLoading);}else{autoload();render();updateAutoStat();}renderPeriodSel();}
 let AUTO=false;(function(){try{localStorage.setItem('__t','1');localStorage.removeItem('__t');AUTO=true;}catch(e){}})();
 let CLI_CORR={}, SCORR={}, CORR=CLI_CORR;  // normTekiyo -> [names]（軸別の学習辞書）
 function loadCorr(){if(!AUTO)return;try{const s=localStorage.getItem(CKEY);if(s)CLI_CORR=JSON.parse(s);}catch(e){}try{const s=localStorage.getItem(SCKEY);if(s)SCORR=JSON.parse(s);}catch(e){}CORR=AXIS==='staff'?SCORR:CLI_CORR;}
