@@ -31,6 +31,12 @@
   tbody tr:hover td{background:#fafbfc}
   tr.need td{background:transparent;box-shadow:inset 3px 0 0 var(--warn)}
   tr.done td{background:transparent}tr.done .tek{color:var(--mut2);text-decoration:line-through}
+  tr.mhdr td{background:var(--panel2)!important;cursor:pointer;font-weight:700;color:var(--txt);border-bottom:1px solid var(--line);border-top:1px solid var(--line);padding:8px 11px;user-select:none}
+  tr.mhdr:hover td{background:#e9edf3!important}
+  tr.mhdr .caret{display:inline-block;width:12px;color:var(--mut);font-size:10px;margin-right:4px}
+  tr.mhdr .mcnt{color:var(--mut);font-weight:500;font-size:11px;margin-left:8px}
+  tr.mhdr .msub{float:right;font-variant-numeric:tabular-nums;color:var(--accent2);font-weight:700}
+  tr.mhdr .mdone{float:right;font-weight:500;font-size:11px;color:var(--done);margin-left:12px}
   .tek{font-size:12.5px;line-height:1.45;max-width:330px}.ven{color:var(--mut2);font-size:11px;margin-top:1px}
   .ck{width:18px;height:18px;cursor:pointer;accent-color:var(--done)}
   .chip{display:inline-flex;align-items:center;gap:4px;background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:2px 5px 2px 9px;margin:2px 3px 2px 0;font-size:11px;font-weight:500;color:var(--txt)}
@@ -139,7 +145,7 @@
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <button class="btn imp mini" onclick="document.getElementById('impf').click()">⬆ データ取込（txt/CSV）</button>
         <input type="file" id="impf" accept=".txt,.csv,.tsv" multiple style="display:none">
-        <button class="btn sec mini" onclick="clearAllTx()">全消去（空にする）</button>
+        <button class="btn sec mini" onclick="clearAllTx()">この期を全消去</button>
         <span class="sub" id="dsinfo"></span>
       </div>
       <p class="dzhint">📎 ここに <b>txt / CSV をドラッグ＆ドロップ</b>（複数ファイル可）、またはボタンから選択。会議費・交際費をまとめて投入できます。摘要から相手先を自動判定し、同一明細（R-No）は重複スキップ、手修正は学習辞書として次回も自動適用します。</p>
@@ -289,7 +295,7 @@ function classify(tekiyo){const tk=norm(tekiyo);const hits=[];
   for(const [rx,n] of BRX){if(rx.test(tk))return{c:[n],k:'bucket'};}
   return{c:[CLI_NONE],k:'none'};}
 // ---- state ----
-let TX=[], filter='all', query='', pview='total', DSNAME='（未取込）';
+let TX=[], filter='all', query='', pview='total', DSNAME='（未取込）', COLLAPSED=new Set();
 function txFromEmbedded(){return DATA.txs.map(t=>{const st=classifyStaff(t.t);const o={id:t.id,key:t.key||'',m:t.m,amt:t.amt,v:t.v,t:t.t,done:false,
   cCli:t.c.slice(),ocCli:t.c.slice(),kCli:t.k,manCli:false,dictCli:false,
   cStaff:st.s.slice(),ocStaff:st.s.slice(),kStaff:st.sk,manStaff:false,dictStaff:false};
@@ -313,7 +319,14 @@ function render(){
     if(query){const s=(t.t+' '+t.v+' '+t.c.join(' ')).toLowerCase();if(!s.includes(query.toLowerCase()))return false;}
     return true;});
   list.sort(cmpFiscal);   // 取込順によらず7月〜6月（会計年度順）に自動整列
-  document.getElementById('rows').innerHTML=list.map(rowHtml).join('')||'<tr><td colspan=6 style="color:#8b98a9;padding:20px">該当なし</td></tr>';
+  // 月ごとにグループ化（見出し＝月名＋件数＋月合計、クリックで折りたたみ）
+  const groups=[];let curM='__';
+  list.forEach(t=>{const mk=(t.m==null?'x':String(t.m));if(mk!==curM){curM=mk;groups.push({mk:mk,m:t.m,rows:[]});}groups[groups.length-1].rows.push(t);});
+  let html='';
+  groups.forEach(g=>{const sub=g.rows.reduce((s,t)=>s+t.amt,0);const dn=g.rows.filter(t=>t.done).length;const col=COLLAPSED.has(g.mk);
+    html+=`<tr class="mhdr" data-m="${g.mk}"><td colspan="6"><span class="caret">${col?'▶':'▼'}</span>${g.m?g.m+'月':'月不明'}<span class="mcnt">${g.rows.length}件</span><span class="msub">¥${yen(sub)}</span><span class="mdone">✓${dn}/${g.rows.length}</span></td></tr>`;
+    if(!col)html+=g.rows.map(rowHtml).join('');});
+  document.getElementById('rows').innerHTML=html||'<tr><td colspan=6 style="color:#8b98a9;padding:20px">該当なし</td></tr>';
   bindRows();computePivot();renderPivot();renderStat();pane.scrollTop=sc;
   if(document.getElementById('overlay').classList.contains('on'))renderModal();}
 function rowHtml(t){const k=kindOf(t);
@@ -329,8 +342,8 @@ function rowHtml(t){const k=kindOf(t);
 function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function recordCorr(t){t.man=true;const key=norm(t.t);if(t.c.length&&!(t.c.length===1&&t.c[0]===NONE)){CORR[key]=t.c.slice();}else{delete CORR[key];}saveCorr();stash(t);}
 function bindRows(){
-  document.querySelectorAll('.ck').forEach(c=>c.onchange=()=>{const t=TX.find(a=>a.id==c.dataset.ck);t.done=c.checked;persist();
-    if(filter==='unchecked'||filter==='checked')render();else{c.closest('tr').classList.toggle('done',t.done);renderStat();}});
+  document.querySelectorAll('.mhdr').forEach(h=>h.onclick=()=>{const k=h.dataset.m;if(COLLAPSED.has(k))COLLAPSED.delete(k);else COLLAPSED.add(k);render();});
+  document.querySelectorAll('.ck').forEach(c=>c.onchange=()=>{const t=TX.find(a=>a.id==c.dataset.ck);t.done=c.checked;persist();render();});
   document.querySelectorAll('.x').forEach(x=>x.onclick=()=>{const t=TX.find(a=>a.id==x.dataset.id);t.c.splice(+x.dataset.i,1);if(t.c.length===0)t.c=[NONE];recordCorr(t);persist();render();});
   document.querySelectorAll('.addc').forEach(inp=>{
     inp.oninput=()=>acShow(inp);
@@ -520,7 +533,7 @@ document.getElementById('loadf').onchange=e=>{const f=e.target.files[0];if(!f)re
   r.readAsText(f);e.target.value='';};
 function resetAll(){if(!confirm('相手先を自動判定の状態に戻します（チェックも解除）。学習辞書と取込データは保持します。よろしいですか？'))return;
   TX.forEach(t=>{t.c=t.oc.slice();t.done=false;t.man=false;t.dict=false;});persist();render();}
-function clearAllTx(){if(!confirm('取り込んだデータをすべて消去して空にします（学習辞書は残ります）。よろしいですか？'))return;
+function clearAllTx(){if(!confirm('【'+PERIOD+'】の取り込みデータをすべて消去して空にします。\n※他の期のデータ・学習辞書・相手先マスタは残ります。\nよろしいですか？'))return;
   TX=[];DSNAME='（未取込）';persist();render();}
 
 // ===== xlsx 書き出し（外部ライブラリ不要・オフライン対応） =====
@@ -643,16 +656,20 @@ function exportXlsx(){
 
 // ===== クラウド同期（GitHub Pages + GAS） =====
 const SKEY='settai_cloud_v1';
+// 全員が既定で同じクラウドにつながるよう、URLを既定値として埋め込む（各PCで設定不要）
+const DEFAULT_GAS='https://script.google.com/macros/s/AKfycbxQEEcLby9qmJPfK-fYJFj5N2fwUH6WyPS6XtNMTbvy_JqNJ49NLbVnioCdGPhgISHO/exec';
 let CLOUD={url:'',token:''};
 try{const _s=localStorage.getItem(SKEY);if(_s)CLOUD=JSON.parse(_s);}catch(e){}
 let _syncTimer=null,_syncing=false;
-function cloudConfigured(){return !!CLOUD.url;}
+function gasUrl(){return (CLOUD.url&&CLOUD.url.trim())?CLOUD.url.trim():DEFAULT_GAS;}
+function gasToken(){return CLOUD.token||'';}
+function cloudConfigured(){return !!gasUrl();}
 function setSync(msg,color){const el=document.getElementById('syncstat');if(el){el.textContent=msg;el.style.color=color||'var(--mut)';}}
 function saveCloudCfg(){CLOUD={url:document.getElementById('gasurl').value.trim(),token:document.getElementById('gastoken').value.trim()};try{localStorage.setItem(SKEY,JSON.stringify(CLOUD));}catch(e){}
   if(cloudConfigured()){cloudLoad(true);}else setSync('クラウド未設定（ローカル保存のみ）');}
 async function cloudLoad(showAlert){if(!cloudConfigured()){if(showAlert)alert('先にGASのURLと合言葉を設定してください。');return;}
   setSync('クラウドから読込中…','var(--accent)');
-  try{const r=await fetch(CLOUD.url+'?action=load&period='+encodeURIComponent(PERIOD)+'&token='+encodeURIComponent(CLOUD.token));const d=await r.json();
+  try{const r=await fetch(gasUrl()+'?action=load&period='+encodeURIComponent(PERIOD)+'&token='+encodeURIComponent(gasToken()));const d=await r.json();
     if(!d.ok)throw new Error(d.error||'認証エラー');
     if(d.tx)TX=d.tx.map(t=>normalizeTx({man:false,dict:false,...t}));
     if(d.corr)CLI_CORR=d.corr; if(d.scorr)SCORR=d.scorr; CORR=AXIS==='staff'?SCORR:CLI_CORR;
@@ -666,8 +683,8 @@ async function cloudLoad(showAlert){if(!cloudConfigured()){if(showAlert)alert('�
 function scheduleCloudSave(){if(!cloudConfigured())return;if(_syncTimer)clearTimeout(_syncTimer);setSync('未同期の変更あり…','#e3a008');_syncTimer=setTimeout(cloudSave,1500);}
 async function cloudSave(){if(!cloudConfigured()){setSync('クラウド未設定（ローカル保存のみ）');return;}if(_syncing){scheduleCloudSave();return;}
   _syncing=true;setSync('クラウドへ保存中…','var(--accent)');
-  try{TX.forEach(stash);const body=JSON.stringify({action:'save',token:CLOUD.token,period:PERIOD,tx:TX,corr:CLI_CORR,cands:CLI_CANDS,scorr:SCORR,scands:SCANDS});
-    const r=await fetch(CLOUD.url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:body});
+  try{TX.forEach(stash);const body=JSON.stringify({action:'save',token:gasToken(),period:PERIOD,periodsList:PERIODS,tx:TX,corr:CLI_CORR,cands:CLI_CANDS,scorr:SCORR,scands:SCANDS});
+    const r=await fetch(gasUrl(),{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:body});
     const d=await r.json();if(!d.ok)throw new Error(d.error||'認証エラー');
     setSync('✓ クラウド保存済み '+(d.savedAt||''),'#3fb950');
   }catch(e){setSync('⚠ 保存失敗: '+e.message+'（ローカルには保存済み）','#f0883e');}
@@ -680,7 +697,8 @@ const _loaded=autoload();
 if(!_loaded)TX=txFromEmbedded();   // 作業コピー：埋め込みサンプル(実データ)で即プレビュー
 render();updateAutoStat();
 if(_loaded){const el=document.getElementById('autostat');if(el){el.innerHTML='✓ 前回の続きを読み込みました';setTimeout(updateAutoStat,2500);}}
-if(cloudConfigured()){document.getElementById('gasurl').value=CLOUD.url;document.getElementById('gastoken').value=CLOUD.token;cloudLoad(false);}else{setSync('クラウド未設定（ローカル保存のみ）');}
+document.getElementById('gasurl').value=gasUrl();document.getElementById('gastoken').value=CLOUD.token||'';
+setSync('クラウドに接続中…','var(--accent)');cloudLoad(false);   // 既定で全員が同じクラウドを自動読込（期一覧も共有）
 </script>
 </body>
 </html>
