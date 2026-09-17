@@ -449,8 +449,15 @@ function parseImport(text){
     applyCorrBoth(t);setActive(t);out.push(t);}
   return out;}
 function readAB(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error);r.readAsArrayBuffer(file);});}
-function decodeText(buf){let text;try{text=new TextDecoder('shift-jis',{fatal:false}).decode(buf);}catch(_){text=new TextDecoder('utf-8').decode(buf);}
-  if((text.match(/ /g)||[]).length>text.length*0.02){try{text=new TextDecoder('utf-8').decode(buf);}catch(_){}}return text;}
+function decodeText(buf){
+  const b=new Uint8Array(buf);
+  // UTF-8 BOM 付きは UTF-8
+  if(b[0]===0xEF && b[1]===0xBB && b[2]===0xBF) return new TextDecoder('utf-8').decode(b);
+  // 厳密UTF-8として妥当なら UTF-8（会計ソフトのUTF-8出力にも対応）
+  try{ return new TextDecoder('utf-8',{fatal:true}).decode(b); }catch(_){}
+  // それ以外は Shift-JIS(CP932)＝会計ソフト標準
+  return new TextDecoder('shift-jis',{fatal:false}).decode(b);
+}
 async function importFiles(files){
   files=Array.from(files||[]).filter(f=>f&&/\.(txt|csv|tsv)$/i.test(f.name));
   if(!files.length){alert('txt / CSV ファイルを指定してください。');return;}
