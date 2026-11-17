@@ -186,7 +186,7 @@
       <button class="btn sec mini" onclick="saveProg()">💾 ファイル保存</button>
       <button class="btn sec mini" onclick="document.getElementById('loadf').click()">📂 ファイル読込</button>
       <button class="btn sec mini" onclick="clearAuto()">保存消去</button>
-      <button class="btn sec mini" onclick="resetAll()">自動判定に戻す</button>
+      <button class="btn sec mini" onclick="resetAll()">両軸を再判定</button>
       <input type="file" id="loadf" accept=".json" style="display:none">
     </div>
     <div id="autostat" class="sub" style="margin-bottom:10px"></div>
@@ -230,9 +230,19 @@ function setActive(t){const S=AXIS==='staff';
 function stash(t){const S=AXIS==='staff';
   if(S){t.cStaff=t.c;t.ocStaff=t.oc;t.kStaff=t.k;t.manStaff=t.man;t.dictStaff=t.dict;}
   else{t.cCli=t.c;t.ocCli=t.oc;t.kCli=t.k;t.manCli=t.man;t.dictCli=t.dict;}}
+const isStaffName=x=>SCANDS.includes(x)||STAFF.includes(x)||DEPT.includes(x);
 function normalizeTx(t){ // 旧データ・クラウド由来（軸フィールド無し）を補完
-  if(t.cCli===undefined){t.cCli=(t.c||[]).slice();t.ocCli=(t.oc||t.c||[]).slice();t.kCli=t.k||'none';t.manCli=!!t.man;t.dictCli=!!t.dict;}
-  if(t.cStaff===undefined){const st=classifyStaff(t.t);t.cStaff=st.s.slice();t.ocStaff=st.s.slice();t.kStaff=st.sk;t.manStaff=false;t.dictStaff=false;}
+  if(t.cCli===undefined){
+    // 旧クラウド保存は軸が1本しか無く、担当者別を表示中に保存すると相手先軸へ担当者名が入る。混入分は捨てて摘要から判定し直す
+    const cc=(t.c||[]).filter(x=>!isStaffName(x));
+    if(cc.length){t.cCli=cc;const oc=(t.oc||[]).filter(x=>!isStaffName(x));t.ocCli=oc.length?oc:cc.slice();t.kCli=t.k||'none';t.manCli=!!t.man;t.dictCli=!!t.dict;}
+    else{const cl=classify(t.t),key=norm(t.t);
+      if(CLI_CORR[key]){t.cCli=CLI_CORR[key].slice();t.dictCli=true;}else{t.cCli=cl.c.slice();t.dictCli=false;}
+      t.ocCli=cl.c.slice();t.kCli=cl.k;t.manCli=false;}
+  }
+  if(t.cStaff===undefined){const st=classifyStaff(t.t),key=norm(t.t);   // 担当者軸が保存されていない旧データは、摘要から判定したうえで担当者辞書の手修正を戻す
+    if(SCORR[key]){t.cStaff=SCORR[key].slice();t.dictStaff=true;}else{t.cStaff=st.s.slice();t.dictStaff=false;}
+    t.ocStaff=st.s.slice();t.kStaff=st.sk;t.manStaff=false;}
   else if(!t.manStaff&&(t.kStaff==='gift'||(Array.isArray(t.cStaff)&&t.cStaff.indexOf('手土産（共通）')>=0))){ // 旧「手土産（共通）」の保存データを元へ戻す
     const st=classifyStaff(t.t);t.cStaff=st.s.slice();t.ocStaff=st.s.slice();t.kStaff=st.sk;}
   if(Array.isArray(t.cStaff))t.cStaff=[...new Set(t.cStaff.map(x=>x==='営業'?'営業部':x))];   // 「営業」→「営業部」に統合
@@ -531,8 +541,12 @@ document.getElementById('loadf').onchange=e=>{const f=e.target.files[0];if(!f)re
     CANDS=AXIS==='staff'?SCANDS:CLI_CANDS;saveCands();refreshCands();
     persist();render();alert('進捗を読み込みました。');}catch(err){alert('読込に失敗しました: '+err.message);}};
   r.readAsText(f);e.target.value='';};
-function resetAll(){if(!confirm('相手先を自動判定の状態に戻します（チェックも解除）。学習辞書と取込データは保持します。よろしいですか？'))return;
-  TX.forEach(t=>{t.c=t.oc.slice();t.done=false;t.man=false;t.dict=false;});persist();render();}
+function resetAll(){if(!confirm('全明細を摘要から自動判定し直します。\n相手先・担当者の両方をやり直したあと、学習辞書に覚えている手修正を再適用します。\n※チェック済みと取込データはそのまま残ります。\nよろしいですか？'))return;
+  TX.forEach(t=>{const cl=classify(t.t),st=classifyStaff(t.t);
+    t.cCli=cl.c.slice();t.ocCli=cl.c.slice();t.kCli=cl.k;t.manCli=false;t.dictCli=false;
+    t.cStaff=st.s.slice();t.ocStaff=st.s.slice();t.kStaff=st.sk;t.manStaff=false;t.dictStaff=false;
+    applyCorrBoth(t);setActive(t);});
+  persist();render();}
 function clearAllTx(){if(!confirm('【'+PERIOD+'】の取り込みデータをすべて消去して空にします。\n※他の期のデータ・学習辞書・相手先マスタは残ります。\nよろしいですか？'))return;
   TX=[];DSNAME='（未取込）';persist();render();}
 
@@ -671,9 +685,9 @@ async function cloudLoad(showAlert){if(!cloudConfigured()){if(showAlert)alert('�
   setSync('クラウドから読込中…','var(--accent)');
   try{const r=await fetch(gasUrl()+'?action=load&period='+encodeURIComponent(PERIOD)+'&token='+encodeURIComponent(gasToken()));const d=await r.json();
     if(!d.ok)throw new Error(d.error||'認証エラー');
-    if(d.tx)TX=d.tx.map(t=>normalizeTx({man:false,dict:false,...t}));
     if(d.corr)CLI_CORR=d.corr; if(d.scorr)SCORR=d.scorr; CORR=AXIS==='staff'?SCORR:CLI_CORR;
     if(d.cands)d.cands.forEach(c=>{if(!CLI_CANDS.includes(c))CLI_CANDS.push(c);}); if(d.scands)d.scands.forEach(c=>{if(!SCANDS.includes(c))SCANDS.push(c);});
+    if(d.tx)TX=d.tx.map(t=>normalizeTx({man:false,dict:false,...t}));   // 辞書と候補を先に反映してから明細を正規化する
     if(d.periods&&d.periods.length){d.periods.forEach(p=>{if(!PERIODS.includes(p))PERIODS.push(p);});savePeriods();renderPeriodSel();}
     refreshCands();render();
     try{localStorage.setItem(progKey(),JSON.stringify({v:2,saved:Date.now(),ds:DSNAME,tx:TX}));}catch(e){}
@@ -698,7 +712,8 @@ if(!_loaded)TX=txFromEmbedded();   // 作業コピー：埋め込みサンプル
 render();updateAutoStat();
 if(_loaded){const el=document.getElementById('autostat');if(el){el.innerHTML='✓ 前回の続きを読み込みました';setTimeout(updateAutoStat,2500);}}
 document.getElementById('gasurl').value=gasUrl();document.getElementById('gastoken').value=CLOUD.token||'';
-setSync('クラウドに接続中…','var(--accent)');cloudLoad(false);   // 既定で全員が同じクラウドを自動読込（期一覧も共有）
+if(cloudConfigured()){setSync('クラウドに接続中…','var(--accent)');showLoading('クラウドから読込中…');cloudLoad(false).finally(hideLoading);}   // 既定で全員が同じクラウドを自動読込（期一覧も共有）
+else setSync('クラウド未設定（ローカル保存のみ）');
 </script>
 </body>
 </html>
