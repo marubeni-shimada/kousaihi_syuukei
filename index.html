@@ -231,16 +231,41 @@ function stash(t){const S=AXIS==='staff';
   if(S){t.cStaff=t.c;t.ocStaff=t.oc;t.kStaff=t.k;t.manStaff=t.man;t.dictStaff=t.dict;}
   else{t.cCli=t.c;t.ocCli=t.oc;t.kCli=t.k;t.manCli=t.man;t.dictCli=t.dict;}}
 const isStaffName=x=>SCANDS.includes(x)||STAFF.includes(x)||DEPT.includes(x);
-function normalizeTx(t){ // 旧データ・クラウド由来（軸フィールド無し）を補完
-  if(t.cCli===undefined){
-    // 旧クラウド保存は軸が1本しか無く、担当者別を表示中に保存すると相手先軸へ担当者名が入る。混入分は捨てて摘要から判定し直す
-    const cc=(t.c||[]).filter(x=>!isStaffName(x));
-    if(cc.length){t.cCli=cc;const oc=(t.oc||[]).filter(x=>!isStaffName(x));t.ocCli=oc.length?oc:cc.slice();t.kCli=t.k||'none';t.manCli=!!t.man;t.dictCli=!!t.dict;}
-    else{const cl=classify(t.t),key=norm(t.t);
-      if(CLI_CORR[key]){t.cCli=CLI_CORR[key].slice();t.dictCli=true;}else{t.cCli=cl.c.slice();t.dictCli=false;}
-      t.ocCli=cl.c.slice();t.kCli=cl.k;t.manCli=false;}
+// 社員名簿にしかない名前（相手先マスタにも載っている名前は、どちらとも言えないので触らない）
+const isStaffOnlyName=x=>isStaffName(x)&&!CLI_CANDS.includes(x);
+// 旧形式（軸が1本しか保存されていない）データが、どちらの軸で保存されたものかを明細全体から推定する
+function guessLegacyAxis(arr){const v=[];arr.forEach(t=>{if(t.cCli===undefined&&t.cStaff===undefined)(t.c||[]).forEach(x=>v.push(x));});
+  if(!v.length)return 'client';
+  return (v.filter(isStaffOnlyName).length/v.length>=0.5)?'staff':'client';}
+function normalizeAll(arr){const ax=guessLegacyAxis(arr);return arr.map(t=>normalizeTx(t,ax));}
+function normalizeTx(t,legacyAxis){ // 保存データを「相手先」「担当者」の2軸に必ず分けて復元する
+  const key=norm(t.t);
+  if(t.cCli===undefined&&t.cStaff===undefined){   // 旧形式：1本しか無いので、推定した軸へ入れ、もう一方は摘要とその軸の辞書から作る
+    const one=(t.c||[]).slice(), oneOc=(t.oc||t.c||[]).slice();
+    if(legacyAxis==='staff'){
+      t.cStaff=one;t.ocStaff=oneOc;t.kStaff=t.k||'none';t.manStaff=!!t.man;t.dictStaff=!!t.dict;
+      const cl=classify(t.t),fix=CLI_CORR[key];
+      t.cCli=fix?fix.slice():cl.c.slice();t.ocCli=cl.c.slice();t.kCli=cl.k;t.manCli=false;t.dictCli=!!fix;
+    }else{
+      t.cCli=one;t.ocCli=oneOc;t.kCli=t.k||'none';t.manCli=!!t.man;t.dictCli=!!t.dict;
+      const st=classifyStaff(t.t),sfix=SCORR[key];
+      t.cStaff=sfix?sfix.slice():st.s.slice();t.ocStaff=st.s.slice();t.kStaff=st.sk;t.manStaff=false;t.dictStaff=!!sfix;
+    }
   }
-  if(t.cStaff===undefined){const st=classifyStaff(t.t),key=norm(t.t);   // 担当者軸が保存されていない旧データは、摘要から判定したうえで担当者辞書の手修正を戻す
+  if(t.cCli===undefined){t.cCli=(t.c||[]).slice();t.ocCli=(t.oc||t.c||[]).slice();t.kCli=t.k||'none';t.manCli=!!t.man;t.dictCli=!!t.dict;}
+  // 相手先に紛れ込んだ社員名は、消さずに担当者側へ移す（相手先マスタにも載っている名前は動かさない）
+  if(Array.isArray(t.cCli)&&t.cCli.some(isStaffOnlyName)){
+    const moved=t.cCli.filter(isStaffOnlyName);
+    t.cCli=t.cCli.filter(x=>!isStaffOnlyName(x));
+    if(!Array.isArray(t.cStaff))t.cStaff=[];
+    moved.forEach(x=>{if(!t.cStaff.includes(x))t.cStaff.push(x);});
+    if(t.cStaff.length>1)t.cStaff=t.cStaff.filter(x=>x!==STAFF_NONE);
+    if(!t.cCli.length){const cl=classify(t.t),fix=(CLI_CORR[key]||[]).filter(x=>!isStaffOnlyName(x));
+      if(fix.length){t.cCli=fix;t.dictCli=true;}else{t.cCli=cl.c.slice();t.dictCli=false;}
+      t.kCli=cl.k;t.manCli=false;}
+  }
+  if(Array.isArray(t.ocCli)){const k2=t.ocCli.filter(x=>!isStaffOnlyName(x));t.ocCli=k2.length?k2:classify(t.t).c.slice();}
+  if(t.cStaff===undefined){const st=classifyStaff(t.t);   // 担当者軸が保存されていない旧データは、摘要から判定したうえで担当者辞書の手修正を戻す
     if(SCORR[key]){t.cStaff=SCORR[key].slice();t.dictStaff=true;}else{t.cStaff=st.s.slice();t.dictStaff=false;}
     t.ocStaff=st.s.slice();t.kStaff=st.sk;t.manStaff=false;}
   else if(!t.manStaff&&(t.kStaff==='gift'||(Array.isArray(t.cStaff)&&t.cStaff.indexOf('手土産（共通）')>=0))){ // 旧「手土産（共通）」の保存データを元へ戻す
@@ -296,6 +321,8 @@ function loadCorr(){if(!AUTO)return;try{const s=localStorage.getItem(CKEY);if(s)
 function saveCorr(){if(!AUTO)return;try{localStorage.setItem(AXIS==='staff'?SCKEY:CKEY,JSON.stringify(CORR));}catch(e){}}
 function loadCands(){if(!AUTO)return;try{const s=localStorage.getItem(MKEY);if(s){JSON.parse(s).forEach(c=>{if(!CLI_CANDS.includes(c))CLI_CANDS.push(c);});}}catch(e){}try{const s=localStorage.getItem(SMKEY);if(s){JSON.parse(s).forEach(c=>{if(!SCANDS.includes(c))SCANDS.push(c);});}}catch(e){}}
 function saveCands(){if(!AUTO)return;try{localStorage.setItem(AXIS==='staff'?SMKEY:MKEY,JSON.stringify(CANDS));}catch(e){}}
+// 相手先の学習辞書に担当者名が記録されてしまっている分を取り除く（残っていると読み込むたびに相手先へ戻ってしまう）
+function sanitizeCliCorr(){Object.keys(CLI_CORR).forEach(k=>{const v=(CLI_CORR[k]||[]).filter(x=>!isStaffOnlyName(x));if(v.length)CLI_CORR[k]=v;else delete CLI_CORR[k];});}
 function applyCorrBoth(t){const key=norm(t.t);if(CLI_CORR[key]){t.cCli=CLI_CORR[key].slice();t.dictCli=true;}if(SCORR[key]){t.cStaff=[...new Set(SCORR[key].map(x=>x==='営業'?'営業部':x))];t.dictStaff=true;}}
 function refreshCands(){document.getElementById('cands').innerHTML=CANDS.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');}
 // ---- classifier ----
@@ -520,7 +547,7 @@ dz.addEventListener('drop',e=>{e.preventDefault();e.stopPropagation();dz.classLi
 ['dragover','drop'].forEach(ev=>window.addEventListener(ev,e=>{if(e.target.closest&&e.target.closest('#dropzone'))return;e.preventDefault();}));
 // ---- persistence ----
 function persist(){scheduleCloudSave();if(!AUTO)return;try{localStorage.setItem(progKey(),JSON.stringify({v:2,saved:Date.now(),ds:DSNAME,tx:TX}));}catch(e){AUTO=false;}updateAutoStat();}
-function autoload(){if(!AUTO)return false;try{const s=localStorage.getItem(progKey());if(!s)return false;const d=JSON.parse(s);if(!d.tx)return false;TX=d.tx.map(t=>normalizeTx({man:false,dict:false,...t}));DSNAME=d.ds||DSNAME;return true;}catch(e){return false;}}
+function autoload(){if(!AUTO)return false;try{const s=localStorage.getItem(progKey());if(!s)return false;const d=JSON.parse(s);if(!d.tx)return false;TX=normalizeAll(d.tx.map(t=>({man:false,dict:false,...t})));DSNAME=d.ds||DSNAME;return true;}catch(e){return false;}}
 function updateAutoStat(){const el=document.getElementById('autostat');if(!el)return;
   if(AUTO){let t='';try{const s=localStorage.getItem(progKey());if(s){const d=JSON.parse(s);t=' （最終保存 '+new Date(d.saved).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+'）';}}catch(e){}
     const nc=Object.keys(CORR).length;
@@ -535,7 +562,7 @@ function exportDetail(){const rows=[['月',(AXIS==='staff'?'担当者':'相手�
     cs.forEach((c,i)=>{rows.push([t.m?t.m+'月':'',c,base+(i===0?rem:0),t.amt,t.v,t.t,kl,t.done?'✓':'']);});});dl('明細_'+(AXIS==='staff'?'担当者':'相手先')+'判定.csv',csv(rows));}
 function saveProg(){TX.forEach(stash);dl('振り分け進捗.json',JSON.stringify({v:3,saved:Date.now(),ds:DSNAME,tx:TX,corr:CLI_CORR,cands:CLI_CANDS,scorr:SCORR,scands:SCANDS}),'application/json');}
 document.getElementById('loadf').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
-  r.onload=()=>{try{const d=JSON.parse(r.result);if(d.tx){TX=d.tx.map(t=>normalizeTx({man:false,dict:false,...t}));DSNAME=d.ds||DSNAME;}
+  r.onload=()=>{try{const d=JSON.parse(r.result);if(d.tx){TX=normalizeAll(d.tx.map(t=>({man:false,dict:false,...t})));DSNAME=d.ds||DSNAME;}
     if(d.corr){CLI_CORR=d.corr;}if(d.scorr){SCORR=d.scorr;}CORR=AXIS==='staff'?SCORR:CLI_CORR;saveCorr();
     if(d.cands){d.cands.forEach(c=>{if(!CLI_CANDS.includes(c))CLI_CANDS.push(c);});}if(d.scands){d.scands.forEach(c=>{if(!SCANDS.includes(c))SCANDS.push(c);});}
     CANDS=AXIS==='staff'?SCANDS:CLI_CANDS;saveCands();refreshCands();
@@ -674,7 +701,7 @@ const SKEY='settai_cloud_v1';
 const DEFAULT_GAS='https://script.google.com/macros/s/AKfycbxQEEcLby9qmJPfK-fYJFj5N2fwUH6WyPS6XtNMTbvy_JqNJ49NLbVnioCdGPhgISHO/exec';
 let CLOUD={url:'',token:''};
 try{const _s=localStorage.getItem(SKEY);if(_s)CLOUD=JSON.parse(_s);}catch(e){}
-let _syncTimer=null,_syncing=false;
+let _syncTimer=null,_syncing=false,_loadOK=false;   // _loadOK: この期をクラウドから読めたか（読めていないのに空で上書きしないため）
 function gasUrl(){return (CLOUD.url&&CLOUD.url.trim())?CLOUD.url.trim():DEFAULT_GAS;}
 function gasToken(){return CLOUD.token||'';}
 function cloudConfigured(){return !!gasUrl();}
@@ -685,17 +712,19 @@ async function cloudLoad(showAlert){if(!cloudConfigured()){if(showAlert)alert('�
   setSync('クラウドから読込中…','var(--accent)');
   try{const r=await fetch(gasUrl()+'?action=load&period='+encodeURIComponent(PERIOD)+'&token='+encodeURIComponent(gasToken()));const d=await r.json();
     if(!d.ok)throw new Error(d.error||'認証エラー');
-    if(d.corr)CLI_CORR=d.corr; if(d.scorr)SCORR=d.scorr; CORR=AXIS==='staff'?SCORR:CLI_CORR;
     if(d.cands)d.cands.forEach(c=>{if(!CLI_CANDS.includes(c))CLI_CANDS.push(c);}); if(d.scands)d.scands.forEach(c=>{if(!SCANDS.includes(c))SCANDS.push(c);});
-    if(d.tx)TX=d.tx.map(t=>normalizeTx({man:false,dict:false,...t}));   // 辞書と候補を先に反映してから明細を正規化する
+    if(d.corr)CLI_CORR=d.corr; if(d.scorr)SCORR=d.scorr; sanitizeCliCorr(); CORR=AXIS==='staff'?SCORR:CLI_CORR;
+    if(d.tx)TX=normalizeAll(d.tx.map(t=>({man:false,dict:false,...t})));   // 担当者名簿と辞書を先に反映してから明細を正規化する
     if(d.periods&&d.periods.length){d.periods.forEach(p=>{if(!PERIODS.includes(p))PERIODS.push(p);});savePeriods();renderPeriodSel();}
     refreshCands();render();
     try{localStorage.setItem(progKey(),JSON.stringify({v:2,saved:Date.now(),ds:DSNAME,tx:TX}));}catch(e){}
+    _loadOK=true;
     setSync('✓ クラウドから読込完了 '+(d.savedAt?('（'+d.savedAt+'）'):''),'#3fb950');
     if(showAlert)alert('クラウドから読み込みました：明細 '+((d.tx&&d.tx.length)||0)+'件');
-  }catch(e){setSync('⚠ 読込失敗: '+e.message,'#f0883e');if(showAlert)alert('クラウド読込に失敗しました: '+e.message);}}
+  }catch(e){_loadOK=false;setSync('⚠ 読込失敗: '+e.message,'#f0883e');if(showAlert)alert('クラウド読込に失敗しました: '+e.message);}}
 function scheduleCloudSave(){if(!cloudConfigured())return;if(_syncTimer)clearTimeout(_syncTimer);setSync('未同期の変更あり…','#e3a008');_syncTimer=setTimeout(cloudSave,1500);}
 async function cloudSave(){if(!cloudConfigured()){setSync('クラウド未設定（ローカル保存のみ）');return;}if(_syncing){scheduleCloudSave();return;}
+  if(!_loadOK&&!TX.length){setSync('⚠ 読込できていないため保存を見送りました（クラウドのデータは無事です）','#f0883e');return;}   // 読込失敗後に空で上書きしない
   _syncing=true;setSync('クラウドへ保存中…','var(--accent)');
   try{TX.forEach(stash);const body=JSON.stringify({action:'save',token:gasToken(),period:PERIOD,periodsList:PERIODS,tx:TX,corr:CLI_CORR,cands:CLI_CANDS,scorr:SCORR,scands:SCANDS});
     const r=await fetch(gasUrl(),{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:body});
@@ -705,7 +734,7 @@ async function cloudSave(){if(!cloudConfigured()){setSync('クラウド未設定
   _syncing=false;}
 
 // ---- init ----
-loadCorr();loadCands();SCANDS=SCANDS.filter(x=>x!=='営業');refreshCands();   // 「営業」候補を除外（営業部に統合）
+loadCorr();loadCands();SCANDS=SCANDS.filter(x=>x!=='営業');sanitizeCliCorr();refreshCands();   // 「営業」候補を除外（営業部に統合）
 loadPeriods();renderPeriodSel();
 const _loaded=autoload();
 if(!_loaded)TX=txFromEmbedded();   // 作業コピー：埋め込みサンプル(実データ)で即プレビュー
